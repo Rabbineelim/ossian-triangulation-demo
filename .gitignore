@@ -1,0 +1,26 @@
+# local data & runtime artifacts — never commit these
+data/
+storage/
+reports/
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+*.pyc
+scratchpad/
+cloudflared*
+
+# large local inputs / originals
+*.zip
+Surveys*/
+Video Data*/
+Complete Interview*/
+
+# private business/planning docs — do NOT publish these to GitHub
+*.pdf
+*.docx
+*.jpeg
+*.jpg
+*.png
+WhatsApp*
+ossian-website.html

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Ossian · {{ project.name }}{% endblock %}
+{% block body %}
+<div class="flex between reveal">
+  <div>
+    <div class="eyebrow"><a href="/">Dashboard</a> · Project #{{ project.project_id }}</div>
+    <h1 style="margin-top:.1em">{{ project.name }}</h1>
+    <p class="muted" style="margin:.1em 0">{{ project.description or "" }}</p>
+  </div>
+  <div class="flex">
+    {% if report %}<a class="btn ghost" href="/projects/{{ project.project_id }}/report">Report</a>{% endif %}
+    {% if any_cleaned %}<a class="btn sky" href="/projects/{{ project.project_id }}/export.zip">Export all (original formats)</a>{% endif %}
+  </div>
+</div>
+
+<div class="steps reveal" style="margin-top:6px">
+  <div class="s done"><b>1</b> Collect</div>
+  <div class="s {{ 'done' if sources else 'active' }}"><b>2</b> Import</div>
+  <div class="s {{ 'done' if any_cleaned else ('active' if sources else '') }}"><b>3</b> Clean &amp; approve</div>
+  <div class="s"><b>4</b> Analyze</div>
+</div>
+
+<h2>Import your data</h2>
+<div class="grid c2">
+  <div class="card reveal">
+    <form method="post" action="/projects/{{ project.project_id }}/upload" enctype="multipart/form-data" data-loading>
+      <div class="drop" data-drop>
+        <div class="big"><b>Drop files here</b> or click to browse</div>
+        <div class="muted" style="font-size:12.5px;margin-top:4px">PDF · DOC · DOCX · TXT · CSV · TSV · XLSX · VTT</div>
+        <div class="files"></div>
+        <input type="file" name="files" multiple required style="display:none">
+      </div>
+      <label class="f">Source type (optional, auto-detected if blank)</label>
+      <select name="source_type">
+        <option value="">Auto-detect</option>
+        <option>Interview</option><option>Survey</option><option>Review</option>
+        <option>Experiment</option><option>Document</option>
+      </select>
+      <div style="margin-top:16px"><button class="btn" type="submit"><span class="spin"></span><span class="lbl">Import files</span></button></div>
+    </form>
+  </div>
+  <div class="card reveal">
+    <h3 style="font-family:var(--serif);font-size:18px">Try the sample datasets</h3>
+    <p class="muted" style="margin:.3em 0 1em">Interviews, surveys, reviews, and a video-study transcript, imported in one click.</p>
+    {% if has_samples %}
+    <form method="post" action="/projects/{{ project.project_id }}/load-samples" data-loading>
+      <button class="btn sky" type="submit"><span class="spin"></span><span class="lbl">Load sample datasets</span></button>
+    </form>
+    {% else %}<p class="muted"><i>Sample folder not found. Upload files manually.</i></p>{% endif %}
+  </div>
+</div>
+
+{% if sources %}
+<div class="flex between">
+  <h2 style="margin-bottom:0">Imported sources <span class="pill b">{{ sources|length }}</span></h2>
+  <input data-filter="#srcTable" style="max-width:230px" placeholder="Filter sources…">
+</div>
+<div class="card scroll reveal" style="padding:6px 8px">
+<table id="srcTable">
+  <thead><tr><th>File</th><th>Type</th><th>Source</th><th>Units</th><th>Status</th><th>Kept</th><th>Dup</th><th>Empty</th><th>Actions</th></tr></thead>
+  <tbody>
+  {% for s in sources %}
+  <tr data-row>
+    <td><b>{{ s.file_name }}</b>
+        {% if s.notes %}<div class="muted" style="font-size:11px">{{ s.notes[:80] }}</div>{% endif %}</td>
+    <td><code>{{ s.file_type }}</code></td>
+    <td>{{ s.source_type }}</td>
+    <td>{{ s.n_units }}</td>
+    <td>{% if s.import_status=='cleaned' %}<span class="pill kept dot">cleaned</span>
+        {% elif s.import_status=='roadmap-stored' %}<span class="pill">roadmap</span>
+        {% else %}<span class="pill b">imported</span>{% endif %}</td>
+    <td>{{ s.kept or 0 }}</td><td>{{ s.dup or 0 }}</td><td>{{ s.empty or 0 }}</td>
+    <td><div class="flex" style="gap:6px">
+      <a class="btn tiny ghost" href="/sources/{{ s.source_id }}/preview">Preview</a>
+      <a class="btn tiny ghost" href="/sources/{{ s.source_id }}/original" title="Original (untouched)">Original</a>
+      {% if s.import_status=='cleaned' %}<a class="btn tiny" href="/sources/{{ s.source_id }}/review">Review &amp; approve</a>{% endif %}
+      {% if s.import_status=='cleaned' and (s.kept or 0) > 0 %}<a class="btn tiny ghost" href="/sources/{{ s.source_id }}/download">Download</a>{% endif %}
+    </div></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Clean &amp; review</h2>
+<div class="card reveal flex between wrap">
+  <span class="muted" style="max-width:60ch">Run cleaning across every source. Rules clean the data, the assistant explains,
+    and <b>you</b> approve before anything is finalized.</span>
+  <form method="post" action="/projects/{{ project.project_id }}/clean" data-loading style="margin:0">
+    <button class="btn green" type="submit"><span class="spin"></span><span class="lbl">Run cleaning</span></button>
+  </form>
+</div>
+
+<div class="flex between" style="margin-top:20px">
+  <span class="muted" style="font-size:13px">Danger zone</span>
+  <form method="post" action="/projects/{{ project.project_id }}/delete" data-confirm="This permanently deletes this project and all its data." data-confirm-title="Delete this project?" style="margin:0">
+    <button class="btn sm danger" type="submit">Delete project</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Quality report · {{ project.name }}{% endblock %}
+{% block body %}
+<div class="flex between reveal">
+  <div>
+    <div class="eyebrow"><a href="/projects/{{ project.project_id }}">Project</a> · Quality report</div>
+    <h1 style="margin-top:.1em">{{ project.name }}</h1>
+  </div>
+  <div class="flex">
+    <a class="btn ghost" href="/projects/{{ project.project_id }}/report.json">Report (JSON)</a>
+    <a class="btn ghost" href="/projects/{{ project.project_id }}/export.csv">Clean CSV</a>
+    <a class="btn sky" href="/projects/{{ project.project_id }}/export.zip">Export all (original formats)</a>
+  </div>
+</div>
+
+{% if not report %}
+<div class="card reveal" style="text-align:center;padding:40px">
+  <p class="muted">No cleaning run yet. Go back and run cleaning.</p>
+</div>
+{% else %}
+<div class="card reveal" style="margin-top:14px">
+  <div class="ring-wrap">
+    <div class="ring" data-score="{{ report.quality_score }}"></div>
+    <div style="flex:1;min-width:240px">
+      <div class="eyebrow">Quality status</div>
+      <div style="font-family:var(--serif);font-size:24px;margin:.15em 0 .3em">{{ report.status }}</div>
+      <div class="ai"><span class="lab">Summary</span><br>{{ report.ai_summary }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card reveal" style="border:1px solid #CBDCF8;background:linear-gradient(180deg,var(--blue-soft),#F6FAFF)">
+  <div class="flex between wrap">
+    <div>
+      <div class="eyebrow">Review &amp; approve</div>
+      <h3 style="font-family:var(--serif);font-size:19px;margin:.3em 0 .2em">You decide what stays</h3>
+      <p class="muted" style="margin:0;max-width:64ch">Rules cleaned the data and the assistant flagged issues and explained each one.
+        Open a source to see the before/after, the suggestions, and to <b>approve, reject, or edit</b> before exporting.</p>
+    </div>
+  </div>
+  <div class="scroll" style="margin-top:14px">
+  <table>
+    <thead><tr><th>Source</th><th>Type</th><th>Format</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for s in review_sources %}
+    <tr data-row>
+      <td><b>{{ s.file_name }}</b></td>
+      <td>{{ s.source_type }}</td>
+      <td><code>{{ s.file_type }}</code></td>
+      <td>{% if s.approved %}<span class="pill kept dot">approved</span>{% else %}<span class="pill short">needs review</span>{% endif %}</td>
+      <td style="text-align:right"><a class="btn sm" href="/sources/{{ s.source_id }}/review">Review &amp; approve</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<h2>Dataset summary</h2>
+<div class="grid c4">
+  <div class="stat reveal"><div class="label">Sources imported</div><div class="value" data-countup="{{ report.sources_imported }}">0</div></div>
+  <div class="stat reveal"><div class="label">Raw units</div><div class="value" data-countup="{{ report.raw_units }}">0</div></div>
+  <div class="stat g reveal"><div class="label">Final clean units</div><div class="value" data-countup="{{ report.final_clean_units }}">0</div>
+    <div class="sub">{{ (100*report.performance.final_usable_unit_rate)|round(1) }}% usable</div></div>
+  <div class="stat a reveal"><div class="label">Duplicates removed</div><div class="value" data-countup="{{ report.duplicate_units_removed }}">0</div></div>
+</div>
+
+<h2>What cleaning did</h2>
+<div class="grid c4">
+  <div class="stat a reveal"><div class="label">Duplicate units removed</div><div class="value" data-countup="{{ report.duplicate_units_removed }}">0</div></div>
+  <div class="stat reveal"><div class="label">Empty units removed</div><div class="value" data-countup="{{ report.empty_units_removed }}">0</div></div>
+  <div class="stat a reveal"><div class="label">Invalid units flagged</div><div class="value" data-countup="{{ report.invalid_units_flagged }}">0</div><div class="sub">kept for your review</div></div>
+  <div class="stat a reveal"><div class="label">Short units flagged</div><div class="value" data-countup="{{ report.short_units_flagged }}">0</div><div class="sub">kept for your review</div></div>
+</div>
+
+<h2>Performance metrics</h2>
+<div class="card scroll reveal" style="padding:6px 8px">
+<table>
+  <thead><tr><th>Metric</th><th>Value</th><th>Why it matters</th></tr></thead>
+  <tbody>
+  <tr data-row><td>Import success rate</td><td><b>{{ (100*report.performance.import_success_rate)|round(1) }}%</b></td><td class="muted">Files processed correctly</td></tr>
+  <tr data-row><td>Duplicate detection count</td><td><b>{{ '{:,}'.format(report.performance.duplicate_detection_count) }}</b></td><td class="muted">Repeated records found</td></tr>
+  <tr data-row><td>Missing-value detection rate</td><td><b>{{ (100*report.performance.missing_value_detection_rate)|round(1) }}%</b></td><td class="muted">Empty / incomplete records identified</td></tr>
+  <tr data-row><td>Final usable unit rate</td><td><b>{{ (100*report.performance.final_usable_unit_rate)|round(1) }}%</b></td><td class="muted">Units still usable after cleaning</td></tr>
+  <tr data-row><td>Cleaning time (total)</td><td><b>{{ report.performance.cleaning_seconds_total }}s</b></td><td class="muted">Efficiency &amp; scalability</td></tr>
+  <tr data-row><td>Cleaning time per source</td><td><b>{{ report.performance.cleaning_seconds_per_source }}s</b></td><td class="muted">Per-file speed</td></tr>
+  <tr data-row><td>User approval rate</td><td><b>{{ (100*report.performance.get('user_approval_rate',0))|round(1) }}%</b></td><td class="muted">Sources approved by the reviewer</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Approvals &amp; edits <span class="faint" style="font-size:14px">(audit trail)</span></h2>
+{% if approvals %}
+<div class="card scroll reveal" style="padding:6px 8px">
+<table>
+  <thead><tr><th>When</th><th>Reviewer</th><th>Decision</th><th>Note</th></tr></thead>
+  <tbody>
+  {% for a in approvals %}
+  <tr data-row><td class="muted" style="font-family:var(--mono);font-size:12px">{{ a.timestamp }}</td><td>{{ a.user_id }}</td>
+      <td><span class="pill {{ 'kept' if a.decision in ('approved','edited') else 'short' }}">{{ a.decision }}</span></td><td>{{ a.note }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="card reveal"><p class="muted" style="margin:0">No approvals yet. Open a source's <b>Review</b> screen to approve, reject, or edit.</p></div>
+{% endif %}
+{% endif %}
+{% endblock %}

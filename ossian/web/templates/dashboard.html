@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Ossian · Dashboard{% endblock %}
+{% block body %}
+<div class="reveal">
+  <div class="eyebrow">Customer-understanding platform</div>
+  <h1>Turn scattered evidence into a<br>defensible dataset</h1>
+  <p class="lead">Bring every kind of customer evidence into one place, then clean it into a
+    dataset you can trust. Every change is logged, so your findings hold up.</p>
+</div>
+
+<div class="grid c2" style="margin-top:22px">
+  <div class="card hover reveal">
+    <div class="eyebrow">New</div>
+    <h2 style="margin-top:.2em">Start a project</h2>
+    <form method="post" action="/projects">
+      <label class="f">Project name</label>
+      <input name="name" placeholder="e.g. Mid-market churn analysis" required autocomplete="off">
+      <label class="f">Description (optional)</label>
+      <input name="description" placeholder="What question are you answering?" autocomplete="off">
+      <div style="margin-top:16px"><button class="btn"><span class="spin"></span><span class="lbl">Create project</span></button></div>
+    </form>
+  </div>
+  <div class="card reveal">
+    <h2 style="margin-top:.1em">How Ossian works</h2>
+    <div class="steps">
+      <div class="s done"><b>1</b> Collect</div>
+      <div class="s active"><b>2</b> Import</div>
+      <div class="s active"><b>3</b> Clean</div>
+      <div class="s"><b>4</b> Analyze</div>
+    </div>
+    <ol class="muted" style="padding-left:18px;margin:12px 0 0;line-height:1.9">
+      <li><b>Import</b> mixed files: PDF, DOC, DOCX, TXT, CSV, XLSX, VTT.</li>
+      <li>Ossian detects each file and source type and splits content into <b>units</b>.</li>
+      <li>Rules clean the data, the assistant explains, and <b>you</b> approve.</li>
+      <li>Download the clean dataset in every original format.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="flex between" style="margin-top:26px">
+  <h2 style="margin:0">Your projects</h2>
+  {% if projects %}<span class="pill b">{{ projects|length }} total</span>{% endif %}
+</div>
+
+{% if projects %}
+<div class="grid c3" style="margin-top:10px">
+  {% for p in projects %}
+  <div class="card hover reveal" style="display:flex;flex-direction:column">
+    <div class="flex between" style="align-items:flex-start">
+      <div class="eyebrow">Project #{{ p.project_id }}</div>
+      {% if p.score is not none %}
+        <span class="pill {{ 'kept' if p.score>=85 else ('duplicate' if p.score>=70 else 'short') }} dot">{{ p.score }}/100</span>
+      {% else %}<span class="pill">not cleaned</span>{% endif %}
+    </div>
+    <h3 style="font-family:var(--serif);font-size:19px;margin:.4em 0 .1em"><a href="/projects/{{ p.project_id }}">{{ p.name }}</a></h3>
+    <div class="muted" style="font-size:13px;flex:1">{{ p.description or "No description." }}</div>
+    <div class="flex between" style="margin-top:16px">
+      <span class="muted" style="font-size:12.5px;font-family:var(--mono)">{{ p.n_sources }} source{{ '' if p.n_sources==1 else 's' }}</span>
+      <div class="flex" style="gap:8px">
+        <a class="btn sm ghost" href="/projects/{{ p.project_id }}">Open</a>
+        <form method="post" action="/projects/{{ p.project_id }}/delete" data-confirm="This permanently deletes the project, its sources, units, and cleaning history." data-confirm-title="Delete “{{ p.name }}”?" style="margin:0">
+          <button class="btn sm danger" type="submit" title="Delete project">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card reveal" style="text-align:center;padding:46px">
+  <h3 style="font-family:var(--serif);font-size:19px;margin:.2em 0 .2em">No projects yet</h3>
+  <p class="muted">Create your first project above to import and clean evidence.</p>
+</div>
+{% endif %}
+{% endblock %}

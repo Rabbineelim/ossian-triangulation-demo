@@ -1,0 +1,20 @@
+# Ossian — Steps 2 & 3 prototype
+# Backend + file processing (matches the guide's recommended Python stack)
+fastapi>=0.110
+uvicorn>=0.29
+jinja2>=3.1
+python-multipart>=0.0.9   # file uploads in the web UI
+pandas>=2.0
+openpyxl>=3.1             # XLSX
+python-docx>=1.1          # DOCX
+pdfplumber>=0.11          # PDF read
+python-dateutil>=2.9      # date standardization
+fpdf2>=2.7               # PDF write (cleaned-file download)
+xlsxwriter>=3.1          # XLSX write (optional; openpyxl also works)
+# Legacy Word .doc (Word 97-2003) support — layered, all optional:
+pywin32; sys_platform == "win32"   # read/write true .doc via Microsoft Word (best)
+olefile>=0.46            # crude .doc text scrape when Word is absent
+striprtf>=0.0.26         # RTF-flavoured .doc files
+# stdlib used elsewhere: sqlite3, zipfile, csv, unicodedata
+# Optional (nice to have, code degrades gracefully without them):
+# chardet, rapidfuzz

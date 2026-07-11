@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Preview · {{ src.file_name }}{% endblock %}
+{% block body %}
+<div class="flex between reveal">
+  <div>
+    <div class="eyebrow"><a href="/projects/{{ src.project_id }}">Project</a> · Preview</div>
+    <h1 style="margin-top:.1em">{{ src.file_name }}</h1>
+    <div class="flex" style="gap:16px;margin-top:2px">
+      <span class="muted">Detected <code>{{ src.file_type }}</code></span>
+      <span class="muted">Source <b>{{ src.source_type }}</b></span>
+      <span class="muted">Units <b>{{ src.n_units }}</b></span>
+      {% if file_size %}<span class="muted">Size <b>{{ (file_size/1024)|round(1) }} KB</b></span>{% endif %}
+    </div>
+  </div>
+  <a class="btn ghost" href="/sources/{{ src.source_id }}/original">Download original</a>
+</div>
+
+{% if src.notes %}<div class="ai reveal" style="margin-top:14px"><span class="lab">Import notes</span><br>{{ src.notes }}</div>{% endif %}
+
+{% if columns %}
+<h2>Column mapping tool <span class="faint" style="font-size:14px">(CSV / XLSX)</span></h2>
+<div class="card reveal">
+  <p class="muted" style="margin:.1em 0 1em">A mapping was suggested for you. Confirm or edit it, and Ossian re-cleans this source using your choices. Columns left as <code>ignore</code> stay as plain metadata.</p>
+  <form method="post" action="/sources/{{ src.source_id }}/mapping" data-loading>
+    <div class="grid c3">
+      {% for c in columns %}
+      <div>
+        <label class="f" title="{{ c }}">{{ c[:24] }}</label>
+        <select name="map__{{ c }}">
+          {% for f in standard_fields %}
+          <option value="{{ f }}" {{ 'selected' if current_map.get(c)==f or (f=='ignore' and c not in current_map) }}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:16px"><button class="btn" type="submit"><span class="spin"></span><span class="lbl">Save mapping &amp; re-clean</span></button></div>
+  </form>
+</div>
+{% endif %}
+
+{% if suggestions %}
+<h2>Suggestions</h2>
+<div class="card reveal">
+  {% for s in suggestions %}
+  <div style="margin:6px 0;font-size:13.5px"><span class="pill b">{{ s.suggestion_type }}</span>
+    {{ s.suggestion_text }} <span class="faint" style="font-size:11px">· conf {{ '%.0f'|format(s.confidence*100) }}%</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="flex between" style="margin-top:14px">
+  <h2 style="margin:0">Extracted units <span class="faint" style="font-size:14px">(first {{ units|length }})</span></h2>
+  <input data-filter="#previewTable" style="max-width:220px" placeholder="Search units…">
+</div>
+<div class="card scroll reveal" style="padding:6px 8px">
+<table id="previewTable">
+  <thead><tr><th>Unit</th><th>Row/Pg</th><th>Original content</th><th>Metadata</th></tr></thead>
+  <tbody>
+  {% for u in units %}
+  {% set md = loads(u.metadata) or {} %}
+  <tr data-row>
+    <td class="faint" style="font-family:var(--mono);font-size:12px">{{ u.unit_id }}</td>
+    <td class="faint">{{ u.row_number if u.row_number is not none else '' }}{{ 'p'~u.page_number if u.page_number else '' }}</td>
+    <td>{{ (u.original_text or '')[:280] }}</td>
+    <td class="muted" style="font-size:11.5px">
+      {% for k,v in md.items() %}{% if v and loop.index0 < 5 %}<div><code>{{ k }}</code> {{ (v|string)[:24] }}</div>{% endif %}{% endfor %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

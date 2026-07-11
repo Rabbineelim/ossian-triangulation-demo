@@ -1,0 +1,16 @@
+# Render.com Blueprint — deploy Ossian as a free web service.
+# 1. Push this repo to GitHub.
+# 2. On render.com: New + > Blueprint > pick your repo. Render reads this file.
+services:
+  - type: web
+    name: ossian
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn ossian.web.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+    # Free instances have an ephemeral disk (data resets on redeploy). To keep
+    # projects between deploys, add a paid persistent disk mounted at /var/data
+    # and set OSSIAN_STORAGE=/var/data.

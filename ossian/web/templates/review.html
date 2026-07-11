@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Review · {{ src.file_name }}{% endblock %}
+{% block body %}
+<div class="flex between reveal">
+  <div>
+    <div class="eyebrow"><a href="/projects/{{ src.project_id }}">Project</a> · Review</div>
+    <h1 style="margin-top:.1em">{{ src.file_name }}</h1>
+    <div class="flex" style="gap:16px;margin-top:2px">
+      <span class="muted">Source <b>{{ src.source_type }}</b></span>
+      <span class="muted">Type <code>{{ src.file_type }}</code></span>
+    </div>
+  </div>
+  <div class="flex">
+    <a class="btn ghost" href="/sources/{{ src.source_id }}/original">Download original</a>
+    <a class="btn" href="/sources/{{ src.source_id }}/download">Download cleaned</a>
+  </div>
+</div>
+
+<!-- Dataset summary + quality score (Human Approval Screen) -->
+<div class="grid c4 reveal" style="margin-top:16px">
+  <div class="stat"><div class="label">Quality score</div>
+    <div class="value">{{ src_score }}<span class="faint" style="font-size:15px">/100</span></div>
+    <div class="sub">{{ src_status }}</div></div>
+  <div class="stat"><div class="label">Raw units</div><div class="value" data-countup="{{ summary.raw }}">0</div></div>
+  <div class="stat g"><div class="label">Kept (clean)</div><div class="value" data-countup="{{ summary.kept }}">0</div>
+    <div class="sub">{{ summary.flagged }} flagged for review</div></div>
+  <div class="stat a"><div class="label">Duplicates removed</div><div class="value" data-countup="{{ summary.duplicate }}">0</div></div>
+  <div class="stat a"><div class="label">Empty removed</div><div class="value" data-countup="{{ summary.empty }}">0</div>
+    {% if summary.removed %}<div class="sub">+{{ summary.removed }} removed by you</div>{% endif %}</div>
+</div>
+
+<div class="grid c2">
+  <!-- How data is handled -->
+  <div class="card reveal">
+    <div class="eyebrow">How your data is handled</div>
+    <div class="gov" style="margin-top:10px">
+      <div class="col can"><h3>The assistant may</h3><ul>{% for c in boundary.can[:4] %}<li>{{ c }}</li>{% endfor %}</ul></div>
+      <div class="col no"><h3>It never</h3><ul>{% for c in boundary.must_not[:4] %}<li>{{ c }}</li>{% endfor %}</ul></div>
+    </div>
+    <p class="muted" style="margin:10px 0 0;font-size:12.5px">Fixed rules did the cleaning below. Nothing is final until you approve.</p>
+  </div>
+  <!-- AI suggestions panel -->
+  <div class="card reveal">
+    <div class="eyebrow">Assistant suggestions</div>
+    <div style="margin-top:8px">
+      {% for s in src_suggestions %}
+      <div style="margin:7px 0;font-size:13.5px">
+        <span class="pill b">{{ s.suggestion_type }}</span>
+        {{ s.suggestion_text }} <span class="faint" style="font-size:11px">· conf {{ '%.0f'|format(s.confidence*100) }}%</span>
+      </div>
+      {% else %}<p class="muted">No source-level suggestions.</p>{% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="flex between" style="margin:20px 0 4px">
+  <h2 style="margin:0">Before / after <span class="faint" style="font-size:14px;font-family:var(--mono)">(<span id="shownCount">{{ units|length }}</span> shown)</span></h2>
+  <div class="flex">
+    <input data-filter="#unitList" data-count="#shownCount" style="max-width:220px" placeholder="Search units…">
+    <a class="btn sm {{ 'ghost' if show!='changed' }}" href="?show=changed">Changed</a>
+    <a class="btn sm {{ 'ghost' if show!='all' }}" href="?show=all">All</a>
+  </div>
+</div>
+
+<div id="unitList">
+{% if not units %}<p class="muted">No changed or flagged units to show. This data was already clean.</p>{% endif %}
+{% for u in units %}
+<div class="card reveal" data-row data-unit="{{ u.unit_id }}" data-src="{{ src.source_id }}" data-status="{{ u.status }}">
+  <div class="flex between">
+    <div class="flex" style="gap:8px">
+      <span class="faint" style="font-family:var(--mono);font-size:12px">unit {{ u.unit_id }}</span>
+      <span class="st pill {{ u.status }}">{{ u.status }}</span>
+      {% for f in u.flags %}{% if not f.startswith('duplicate_of') %}<span class="pill {{ f }}">{{ f }}</span>{% endif %}{% endfor %}
+    </div>
+    <div class="flex" style="gap:6px">
+      <button class="btn tiny ghost" data-op="save" type="button" title="Save your edit to the cleaned text">Save edit</button>
+      <button class="btn tiny danger" data-op="remove" type="button" {% if u.status!='kept' %}style="display:none"{% endif %}>Remove</button>
+      <button class="btn tiny ghost" data-op="restore" type="button" {% if u.status=='kept' %}style="display:none"{% endif %}>Restore</button>
+    </div>
+  </div>
+  <div class="diff" style="margin-top:11px">
+    <div class="before"><div class="h">Original (unchanged)</div>{{ (u.original or '')[:700] }}</div>
+    <div class="after">
+      <div class="h">Cleaned (editable)</div>
+      <textarea class="edit-text" rows="3">{{ u.cleaned if u.status not in ('empty','duplicate','removed') else '' }}</textarea>
+    </div>
+  </div>
+  {% if u.actions %}
+  <div style="margin-top:9px;font-size:12px">
+    <span class="faint" style="font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:1px">Rules applied</span>
+    {% for a in u.actions %}<span class="pill" style="margin:2px">{{ a.rule_name }}</span>{% endfor %}
+  </div>{% endif %}
+  {% if u.explanation %}<div class="ai"><span class="lab">Why this was flagged</span><br>{{ u.explanation }}</div>{% endif %}
+</div>
+{% endfor %}
+</div>
+
+<!-- Decision buttons: Approve · Reject · (edit above) · Export report -->
+<div class="card reveal" style="position:sticky;bottom:14px;box-shadow:var(--sh-2)">
+  <div class="eyebrow">Decision</div>
+  <form method="post" action="/projects/{{ src.project_id }}/approve" class="flex wrap" style="align-items:flex-end;margin-top:8px">
+    <input type="hidden" name="source_id" value="{{ src.source_id }}">
+    <div style="flex:1;min-width:150px"><label class="f">Reviewer</label><input name="user_id" value="reviewer"></div>
+    <div style="flex:2;min-width:200px"><label class="f">Note (optional)</label><input name="note" placeholder="e.g. kept short reviews R012, R044"></div>
+    <button class="btn green" type="submit" name="decision" value="approved">Approve</button>
+    <button class="btn danger" type="submit" name="decision" value="rejected">Reject</button>
+    <a class="btn ghost" href="/projects/{{ src.project_id }}/report.json">Export report</a>
+  </form>
+</div>
+{% endblock %}

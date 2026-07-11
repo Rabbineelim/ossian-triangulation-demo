@@ -1,0 +1,16 @@
+# keep the image small and don't ship local data / large samples
+data/
+storage/
+reports/
+*.zip
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+*.pyc
+.git/
+*.pdf
+*.docx
+*.jpeg
+*.png
+scratchpad/
