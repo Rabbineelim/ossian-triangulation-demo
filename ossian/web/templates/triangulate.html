@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Ossian · Triangulate · {{ project.name }}{% endblock %}
+{% block body %}
+<div class="flex between reveal">
+  <div>
+    <div class="eyebrow"><a href="/">Dashboard</a> · <a href="/projects/{{ project.project_id }}">{{ project.name }}</a> · Triangulation</div>
+    <h1 style="margin-top:.1em">Triangulate evidence</h1>
+    <p class="muted" style="max-width:76ch;margin:.2em 0">Filter approved cleaned evidence by domain, compare only themes represented across relevant sources, preserve disagreement, and review every proposed conclusion.</p>
+  </div>
+  <div class="flex">
+    <a class="btn ghost" href="/projects/{{ project.project_id }}/triangulation.csv">Export CSV</a>
+    <a class="btn sky" href="/projects/{{ project.project_id }}/triangulation.json">Audit JSON</a>
+  </div>
+</div>
+
+<div class="steps reveal" style="margin-top:6px">
+  <div class="s done"><b>1</b> Collect</div><div class="s done"><b>2</b> Import</div>
+  <div class="s done"><b>3</b> Clean &amp; approve</div><div class="s done"><b>4</b> Analyze</div>
+  <div class="s active"><b>5</b> Triangulate</div>
+</div>
+
+<div class="grid c3 reveal" style="margin-top:24px">
+  <div class="card"><div class="eyebrow">Sources</div><div style="font-family:var(--serif);font-size:34px;font-weight:700">{{ sources|length }}</div><p class="muted">Mapped into domains</p></div>
+  <div class="card"><div class="eyebrow">Source findings</div><div style="font-family:var(--serif);font-size:34px;font-weight:700">{{ findings|length }}</div><p class="muted">Generated from kept units</p></div>
+  <div class="card"><div class="eyebrow">Triangulation results</div><div style="font-family:var(--serif);font-size:34px;font-weight:700">{{ results|length }}</div><p class="muted">Awaiting or carrying human review</p></div>
+</div>
+
+<h2>1. Confirm each source domain</h2>
+<div class="card reveal">
+  <form method="post" action="/projects/{{ project.project_id }}/triangulate/configure">
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Source</th><th>Type</th><th>Kept units</th><th>Domain</th><th>Subdomain / context</th></tr></thead>
+        <tbody>
+        {% for s in sources %}
+          <tr>
+            <td><b>{{ s.file_name }}</b><div class="muted" style="font-size:11px">Source #{{ s.source_id }}</div></td>
+            <td>{{ s.source_type }}</td><td>{{ s.kept or 0 }}</td>
+            <td><select name="domain__{{ s.source_id }}">
+              {% for value,label in available_domains.items() %}
+                <option value="{{ value }}" {{ 'selected' if s.domain==value else '' }}>{{ label }}</option>
+              {% endfor %}
+            </select></td>
+            <td><input name="subdomain__{{ s.source_id }}" value="{{ s.subdomain or '' }}" placeholder="e.g., mobile app v6.2"></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="flex between" style="margin-top:15px">
+      <span class="muted">Domain is the first eligibility gate. Unrelated domains are never combined.</span>
+      <button class="btn ghost" type="submit">Save domain mapping</button>
+    </div>
+  </form>
+</div>
+
+<h2>2. Generate evidence and triangulate</h2>
+<div class="card reveal flex between wrap">
+  <div><b>Transparent baseline analysis</b><p class="muted" style="margin:.25em 0 0;max-width:74ch">The demo extracts domain-specific themes and stance, aggregates each source separately, then compares matching domain + theme findings. This baseline can later be replaced with embeddings or an LLM without changing the workflow.</p></div>
+  <form method="post" action="/projects/{{ project.project_id }}/triangulate/run" data-loading style="margin:0">
+    <button class="btn green" type="submit"><span class="spin"></span><span class="lbl">Run triangulation</span></button>
+  </form>
+</div>
+{% if last_run %}<div class="muted" style="font-size:12px;margin-top:-8px">Last generated: {{ last_run }}</div>{% endif %}
+
+{% if results %}
+<div class="flex between" style="margin-top:30px">
+  <h2 style="margin:0">3. Review results</h2>
+  <form method="get" action="/projects/{{ project.project_id }}/triangulate" style="display:flex;align-items:center;gap:8px;margin:0">
+    <label class="muted" style="margin:0">Domain</label>
+    <select name="domain" onchange="this.form.submit()" style="min-width:260px">
+      {% for d in domains %}<option value="{{ d }}" {{ 'selected' if d==selected_domain else '' }}>{{ domain_labels.get(d,d)|replace('_',' ')|title }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+
+<div class="grid c2" style="margin-top:16px">
+{% for r in selected_results %}
+  {% set isgood = r.relationship in ['convergent_concern','convergent_strength'] %}
+  {% set isbad = r.relationship in ['divergent','insufficient_sources'] %}
+  <div class="card reveal" style="border-left:5px solid {{ 'var(--green)' if isgood else ('var(--red)' if isbad else 'var(--amber)') }}">
+    <div class="flex between">
+      <div><span class="pill {{ 'kept' if isgood else ('bad' if isbad else 'warn') }}">{{ r.relationship|replace('_',' ') }}</span></div>
+      <span class="muted" style="font-size:12px">Confidence: <b>{{ r.confidence }}</b></span>
+    </div>
+    <h3 style="font-family:var(--serif);font-size:21px;margin:14px 0 7px">{{ r.theme|replace('_',' ')|title }}</h3>
+    <p style="margin:.2em 0"><b>{{ r.proposed_claim }}</b></p>
+    <p class="muted" style="font-size:13px">{{ r.explanation }}</p>
+    <div class="flex wrap" style="margin:13px 0 5px">
+      {% for sid in loads(r.source_ids_json) or [] %}<span class="pill b">Source #{{ sid }}</span>{% endfor %}
+      <span class="pill">{{ r.comparability_status|replace('_',' ') }}</span>
+      <span class="pill">{{ r.status|replace('_',' ') }}</span>
+    </div>
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;font-weight:650;color:var(--blue-dark)">Inspect evidence trail</summary>
+      <div style="margin-top:10px;max-height:280px;overflow:auto">
+      {% for e in evidence_by_result.get(r.result_id,[]) %}
+        <div style="padding:10px 0;border-top:1px solid var(--line-2)">
+          <div class="flex between"><b style="font-size:12px">{{ e.file_name }}</b><span class="pill {{ 'bad' if e.stance=='negative' else ('kept' if e.stance=='positive' else '') }}">{{ e.stance }}</span></div>
+          <div style="font-size:13px;margin-top:5px">{{ e.evidence_text }}</div>
+          <div class="muted" style="font-size:11px;margin-top:4px">Unit #{{ e.unit_id }} · Evidence #{{ e.evidence_id }}</div>
+        </div>
+      {% endfor %}
+      </div>
+    </details>
+    <form method="post" action="/projects/{{ project.project_id }}/triangulate/results/{{ r.result_id }}/review" style="margin-top:15px;padding-top:14px;border-top:1px solid var(--line)">
+      <label class="f">Edit proposed claim if needed</label>
+      <textarea name="edited_claim" rows="2" placeholder="Leave blank to keep the proposed claim">{{ '' }}</textarea>
+      <div class="grid c2" style="margin-top:8px">
+        <select name="decision"><option value="approved">Approve</option><option value="edited">Approve with edit</option><option value="rejected">Reject</option><option value="needs_more_evidence">Needs more evidence</option></select>
+        <input name="note" placeholder="Reviewer note (optional)">
+      </div>
+      <button class="btn sm" style="margin-top:9px" type="submit">Save human review</button>
+    </form>
+  </div>
+{% else %}
+  <div class="card"><p class="muted">No results in this domain yet.</p></div>
+{% endfor %}
+</div>
+
+<h2>Source-level comparison</h2>
+<div class="card scroll reveal" style="padding:6px 8px">
+<table><thead><tr><th>Theme</th><th>Source</th><th>Type</th><th>Mentions</th><th>Prevalence</th><th>Negative</th><th>Positive</th><th>Finding</th><th>Bias note</th></tr></thead>
+<tbody>{% for f in selected_findings %}<tr><td><b>{{ f.theme|replace('_',' ') }}</b></td><td>{{ f.file_name }}</td><td>{{ f.source_type }}</td><td>{{ f.theme_mentions }} / {{ f.total_records }}</td><td>{{ '%.1f'|format((f.prevalence or 0)*100) }}%</td><td>{{ f.negative_count }}</td><td>{{ f.positive_count }}</td><td><span class="pill">{{ f.finding_stance }}</span></td><td class="muted" style="font-size:11px;max-width:260px">{{ f.bias_note }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}
+<div class="card reveal" style="margin-top:24px;text-align:center;padding:34px">
+  <h3 style="font-family:var(--serif);font-size:21px">No triangulation run yet</h3>
+  <p class="muted">Confirm the domain mapping above, then run triangulation. At least two relevant sources are needed for a cross-source conclusion.</p>
+</div>
+{% endif %}
+{% endblock %}

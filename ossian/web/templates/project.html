@@ -9,7 +9,7 @@
   </div>
   <div class="flex">
     {% if report %}<a class="btn ghost" href="/projects/{{ project.project_id }}/report">Report</a>{% endif %}
-    {% if any_cleaned %}<a class="btn sky" href="/projects/{{ project.project_id }}/export.zip">Export all (original formats)</a>{% endif %}
+    {% if any_cleaned %}<a class="btn" href="/projects/{{ project.project_id }}/triangulate">Triangulate</a><a class="btn sky" href="/projects/{{ project.project_id }}/export.zip">Export all (original formats)</a>{% endif %}
   </div>
 </div>
 
@@ -17,7 +17,8 @@
   <div class="s done"><b>1</b> Collect</div>
   <div class="s {{ 'done' if sources else 'active' }}"><b>2</b> Import</div>
   <div class="s {{ 'done' if any_cleaned else ('active' if sources else '') }}"><b>3</b> Clean &amp; approve</div>
-  <div class="s"><b>4</b> Analyze</div>
+  <div class="s {{ 'active' if any_cleaned else '' }}"><b>4</b> Analyze</div>
+  <div class="s"><b>5</b> Triangulate</div>
 </div>
 
 <h2>Import your data</h2>
@@ -90,6 +91,14 @@
     <button class="btn green" type="submit"><span class="spin"></span><span class="lbl">Run cleaning</span></button>
   </form>
 </div>
+
+{% if any_cleaned %}
+<h2>Analyze &amp; triangulate</h2>
+<div class="card reveal flex between wrap">
+  <span class="muted" style="max-width:65ch">Turn approved cleaned units into domain-filtered evidence, compare themes across sources, preserve disagreement, and review the proposed findings.</span>
+  <a class="btn" href="/projects/{{ project.project_id }}/triangulate">Open triangulation workspace</a>
+</div>
+{% endif %}
 
 <div class="flex between" style="margin-top:20px">
   <span class="muted" style="font-size:13px">Danger zone</span>

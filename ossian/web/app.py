@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from .. import config, db, exporters
 from ..clean import ai_assistant, pipeline
 from ..ingest import import_file
+from ..triangulate import engine as triangulation_engine
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -59,9 +60,11 @@ def dashboard(request: Request):
                        ORDER BY report_id DESC LIMIT 1) score
                FROM projects p ORDER BY p.project_id DESC"""
         ).fetchall()
-    return templates.TemplateResponse("dashboard.html",
-                                      {"request": request, "projects": projects,
-                                       "has_samples": DATA_DIR.exists()})
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={"projects": projects, "has_samples": DATA_DIR.exists()},
+    )
 
 
 @app.post("/projects")
@@ -93,11 +96,17 @@ def project_view(request: Request, pid: int):
             "ORDER BY report_id DESC LIMIT 1", (pid,)).fetchone()
     report = db.loads(report_row["issues_summary"]) if report_row else None
     any_cleaned = any(s["import_status"] == "cleaned" for s in sources)
-    return templates.TemplateResponse("project.html",
-                                      {"request": request, "project": project,
-                                       "sources": sources, "report": report,
-                                       "any_cleaned": any_cleaned,
-                                       "has_samples": DATA_DIR.exists()})
+    return templates.TemplateResponse(
+        request=request,
+        name="project.html",
+        context={
+            "project": project,
+            "sources": sources,
+            "report": report,
+            "any_cleaned": any_cleaned,
+            "has_samples": DATA_DIR.exists(),
+        },
+    )
 
 
 # --------------------------------------------------------------------------
@@ -161,10 +170,19 @@ def source_preview(request: Request, sid: int):
     if src and src["file_path"] and Path(src["file_path"]).exists():
         size = Path(src["file_path"]).stat().st_size
     return templates.TemplateResponse(
-        "preview.html",
-        {"request": request, "src": src, "units": units, "suggestions": suggestions,
-         "loads": db.loads, "columns": cols, "current_map": current_map,
-         "standard_fields": STANDARD_FIELDS, "file_size": size})
+        request=request,
+        name="preview.html",
+        context={
+            "src": src,
+            "units": units,
+            "suggestions": suggestions,
+            "loads": db.loads,
+            "columns": cols,
+            "current_map": current_map,
+            "standard_fields": STANDARD_FIELDS,
+            "file_size": size,
+        },
+    )
 
 
 @app.post("/sources/{sid}/mapping")
@@ -230,9 +248,15 @@ def report_view(request: Request, pid: int):
     if report:  # user approval rate — computed live
         report["performance"]["user_approval_rate"] = round(n_approved / max(1, n_sources), 3)
     return templates.TemplateResponse(
-        "report.html",
-        {"request": request, "project": project, "report": report,
-         "approvals": approvals, "review_sources": review_sources})
+        request=request,
+        name="report.html",
+        context={
+            "project": project,
+            "report": report,
+            "approvals": approvals,
+            "review_sources": review_sources,
+        },
+    )
 
 
 @app.get("/sources/{sid}/review", response_class=HTMLResponse)
@@ -305,11 +329,19 @@ def review_view(request: Request, sid: int, show: str = "changed"):
             "actions": actions.get(r["unit_id"], []),
         })
     return templates.TemplateResponse(
-        "review.html",
-        {"request": request, "src": src, "units": units[:300], "show": show,
-         "boundary": ai_assistant.AGENT_BOUNDARY, "summary": summary,
-         "src_suggestions": src_suggestions, "src_score": src_score,
-         "src_status": src_status})
+        request=request,
+        name="review.html",
+        context={
+            "src": src,
+            "units": units[:300],
+            "show": show,
+            "boundary": ai_assistant.AGENT_BOUNDARY,
+            "summary": summary,
+            "src_suggestions": src_suggestions,
+            "src_score": src_score,
+            "src_status": src_status,
+        },
+    )
 
 
 @app.post("/projects/{pid}/approve")
@@ -368,6 +400,130 @@ def _log_action(conn, uid, rule, before, after):
         "created_at) VALUES (?,?,?,?,?)",
         (uid, rule, (before or "")[:400], (after or "")[:400], db.now()))
 
+
+
+# --------------------------------------------------------------------------
+# Step 4 — domain-filtered data triangulation
+# --------------------------------------------------------------------------
+@app.get("/projects/{pid}/triangulate", response_class=HTMLResponse)
+def triangulation_view(request: Request, pid: int, domain: str = ""):
+    with db.session() as conn:
+        snapshot = triangulation_engine.project_snapshot(conn, pid)
+        selected_domain = domain or (snapshot["domains"][0] if snapshot["domains"] else "")
+        selected_results = [r for r in snapshot["results"] if r["domain"] == selected_domain]
+        selected_findings = [f for f in snapshot["findings"] if f["domain"] == selected_domain]
+        evidence_by_result = {}
+        for result in selected_results:
+            evidence_by_result[result["result_id"]] = conn.execute(
+                """SELECT eu.*, s.file_name, s.source_type
+                   FROM evidence_units eu JOIN sources s ON s.source_id=eu.source_id
+                   WHERE eu.project_id=? AND eu.domain=? AND eu.theme=?
+                   ORDER BY eu.source_id, eu.evidence_id LIMIT 80""",
+                (pid, result["domain"], result["theme"]),
+            ).fetchall()
+        last_run = conn.execute(
+            "SELECT created_at FROM triangulation_results WHERE project_id=? ORDER BY result_id DESC LIMIT 1",
+            (pid,),
+        ).fetchone()
+    return templates.TemplateResponse(
+        request=request,
+        name="triangulate.html",
+        context={
+            **snapshot,
+            "selected_domain": selected_domain,
+            "selected_results": selected_results,
+            "selected_findings": selected_findings,
+            "evidence_by_result": evidence_by_result,
+            "available_domains": triangulation_engine.DOMAIN_LABELS,
+            "last_run": last_run["created_at"] if last_run else None,
+            "loads": db.loads,
+        },
+    )
+
+
+@app.post("/projects/{pid}/triangulate/configure")
+async def triangulation_configure(pid: int, request: Request):
+    form = await request.form()
+    with db.session() as conn:
+        for key, value in form.items():
+            if key.startswith("domain__"):
+                sid_text = key.split("__", 1)[1]
+                if not sid_text.isdigit():
+                    continue
+                sid = int(sid_text)
+                subdomain = str(form.get(f"subdomain__{sid}", "")).strip()
+                conn.execute(
+                    """INSERT INTO source_domain_assignments
+                       (source_id, domain, subdomain, assigned_by, assigned_at)
+                       VALUES (?,?,?,?,?)
+                       ON CONFLICT(source_id) DO UPDATE SET
+                         domain=excluded.domain, subdomain=excluded.subdomain,
+                         assigned_by=excluded.assigned_by, assigned_at=excluded.assigned_at""",
+                    (sid, str(value), subdomain, "human", db.now()),
+                )
+        conn.execute(
+            "INSERT INTO approval_log(project_id, user_id, decision, note, timestamp) VALUES (?,?,?,?,?)",
+            (pid, "reviewer", "edited", "triangulation domain assignments updated", db.now()),
+        )
+    return RedirectResponse(f"/projects/{pid}/triangulate", status_code=303)
+
+
+@app.post("/projects/{pid}/triangulate/run")
+def triangulation_run(pid: int):
+    with db.session() as conn:
+        triangulation_engine.run_project(conn, pid)
+    return RedirectResponse(f"/projects/{pid}/triangulate", status_code=303)
+
+
+@app.post("/projects/{pid}/triangulate/results/{rid}/review")
+def triangulation_review(pid: int, rid: int, decision: str = Form("approved"),
+                         edited_claim: str = Form(""), note: str = Form(""),
+                         user_id: str = Form("reviewer")):
+    with db.session() as conn:
+        result = conn.execute(
+            "SELECT result_id FROM triangulation_results WHERE result_id=? AND project_id=?",
+            (rid, pid),
+        ).fetchone()
+        if not result:
+            return JSONResponse({"error": "result not found"}, status_code=404)
+        conn.execute(
+            "INSERT INTO triangulation_reviews(result_id,user_id,decision,edited_claim,note,reviewed_at) VALUES (?,?,?,?,?,?)",
+            (rid, user_id, decision, edited_claim.strip(), note.strip(), db.now()),
+        )
+        conn.execute("UPDATE triangulation_results SET status=? WHERE result_id=?", (decision, rid))
+    return RedirectResponse(f"/projects/{pid}/triangulate", status_code=303)
+
+
+@app.get("/projects/{pid}/triangulation.json")
+def triangulation_export_json(pid: int):
+    with db.session() as conn:
+        snapshot = triangulation_engine.project_snapshot(conn, pid)
+        payload = {
+            "project": dict(snapshot["project"]) if snapshot["project"] else None,
+            "sources": [dict(r) for r in snapshot["sources"]],
+            "source_findings": [dict(r) for r in snapshot["findings"]],
+            "triangulation_results": [dict(r) for r in snapshot["results"]],
+        }
+    data = json.dumps(payload, indent=2, default=str).encode("utf-8")
+    return StreamingResponse(iter([data]), media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="ossian_triangulation_project{pid}.json"'})
+
+
+@app.get("/projects/{pid}/triangulation.csv")
+def triangulation_export_csv(pid: int):
+    import csv
+    with db.session() as conn:
+        rows = conn.execute(
+            "SELECT domain,theme,relationship,confidence,proposed_claim,explanation,comparability_status,status FROM triangulation_results WHERE project_id=? ORDER BY domain,theme",
+            (pid,),
+        ).fetchall()
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["domain","theme","relationship","confidence","proposed_claim","explanation","comparability_status","review_status"])
+    for row in rows:
+        writer.writerow(list(row))
+    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="ossian_triangulation_project{pid}.csv"'})
 
 # --- delete project --------------------------------------------------------
 @app.post("/projects/{pid}/delete")

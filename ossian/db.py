@@ -105,6 +105,78 @@ CREATE TABLE IF NOT EXISTS quality_reports (
 CREATE INDEX IF NOT EXISTS idx_raw_units_source ON raw_units(source_id);
 CREATE INDEX IF NOT EXISTS idx_cleaned_units_unit ON cleaned_units(unit_id);
 CREATE INDEX IF NOT EXISTS idx_sources_project ON sources(project_id);
+
+
+CREATE TABLE IF NOT EXISTS source_domain_assignments (
+    assignment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id      INTEGER NOT NULL UNIQUE REFERENCES sources(source_id),
+    domain         TEXT NOT NULL,
+    subdomain      TEXT,
+    assigned_by    TEXT,
+    assigned_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS evidence_units (
+    evidence_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id     INTEGER NOT NULL REFERENCES projects(project_id),
+    source_id      INTEGER NOT NULL REFERENCES sources(source_id),
+    unit_id        INTEGER NOT NULL REFERENCES raw_units(unit_id),
+    domain         TEXT NOT NULL,
+    subdomain      TEXT,
+    theme          TEXT NOT NULL,
+    stance         TEXT,
+    evidence_text  TEXT,
+    context_json   TEXT,
+    rating         REAL,
+    keyword_hits   INTEGER DEFAULT 0,
+    created_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS source_findings (
+    finding_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id      INTEGER NOT NULL REFERENCES projects(project_id),
+    source_id       INTEGER NOT NULL REFERENCES sources(source_id),
+    domain          TEXT NOT NULL,
+    theme           TEXT NOT NULL,
+    total_records   INTEGER,
+    theme_mentions  INTEGER,
+    prevalence      REAL,
+    negative_count  INTEGER,
+    positive_count  INTEGER,
+    mixed_count     INTEGER,
+    finding_stance  TEXT,
+    bias_note       TEXT,
+    created_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS triangulation_results (
+    result_id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id            INTEGER NOT NULL REFERENCES projects(project_id),
+    domain                TEXT NOT NULL,
+    theme                 TEXT NOT NULL,
+    relationship          TEXT NOT NULL,
+    confidence            TEXT,
+    proposed_claim        TEXT,
+    explanation           TEXT,
+    source_ids_json       TEXT,
+    comparability_status  TEXT,
+    status                TEXT DEFAULT 'pending_review',
+    created_at             TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS triangulation_reviews (
+    review_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    result_id     INTEGER NOT NULL REFERENCES triangulation_results(result_id),
+    user_id       TEXT,
+    decision      TEXT,
+    edited_claim  TEXT,
+    note          TEXT,
+    reviewed_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_project_domain ON evidence_units(project_id, domain, theme);
+CREATE INDEX IF NOT EXISTS idx_findings_project_domain ON source_findings(project_id, domain, theme);
+CREATE INDEX IF NOT EXISTS idx_tri_results_project ON triangulation_results(project_id);
 """
 
 
@@ -189,6 +261,11 @@ def delete_project(conn: sqlite3.Connection, project_id: int) -> list[str]:
     conn.execute(
         "DELETE FROM raw_units WHERE source_id IN "
         "(SELECT source_id FROM sources WHERE project_id=?)", (project_id,))
+    conn.execute("DELETE FROM triangulation_reviews WHERE result_id IN (SELECT result_id FROM triangulation_results WHERE project_id=?)", (project_id,))
+    conn.execute("DELETE FROM triangulation_results WHERE project_id=?", (project_id,))
+    conn.execute("DELETE FROM source_findings WHERE project_id=?", (project_id,))
+    conn.execute("DELETE FROM evidence_units WHERE project_id=?", (project_id,))
+    conn.execute("DELETE FROM source_domain_assignments WHERE source_id IN (SELECT source_id FROM sources WHERE project_id=?)", (project_id,))
     conn.execute("DELETE FROM quality_reports WHERE project_id=?", (project_id,))
     conn.execute("DELETE FROM approval_log WHERE project_id=?", (project_id,))
     conn.execute("DELETE FROM sources WHERE project_id=?", (project_id,))
